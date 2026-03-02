@@ -14,8 +14,10 @@ import {
   CandlestickController,
   CandlestickElement,
 } from "chartjs-chart-financial";
+
 import { Chart } from "react-chartjs-2";
 import "chartjs-adapter-date-fns";
+import { useWalletStore } from "@/store/useWalletStore";
 
 ChartJS.register(
   CategoryScale,
@@ -64,13 +66,14 @@ function formatLarge(n: number) {
 }
 
 export default function ALXDashboard() {
-  const [wallet, setWallet] = useState<string | null>(null);
   const [alxBalance, setAlxBalance] = useState(0);
   const [portfolioValue, setPortfolioValue] = useState(0);
   const [alxPriceUSD, setAlxPriceUSD] = useState(0);
   const [liquidityUSD, setLiquidityUSD] = useState(0);
   const [marketCap, setMarketCap] = useState(0);
   const [candles, setCandles] = useState<Candle[]>([]);
+  const [timeframe, setTimeframe] = useState<Timeframe>("1D");
+  const [isLoading, setIsLoading] = useState(false);
 
   async function connectWallet() {
     if (!window.ethereum) return alert("Install MetaMask");
@@ -82,19 +85,18 @@ export default function ALXDashboard() {
 
     const provider = new ethers.BrowserProvider(window.ethereum);
     const accounts = await provider.send("eth_requestAccounts", []);
-    const address = accounts[0];
+    const userAddress = accounts[0];
+
+    const network = await provider.getNetwork();
 
     setWallet(address);
-
-    const token = new ethers.Contract(ALX_CONTRACT, ERC20_ABI, provider);
-    const balance = await token.balanceOf(address);
-    const formatted = Number(ethers.formatUnits(balance, 18));
-
-    setAlxBalance(formatted);
-    setPortfolioValue(formatted * alxPriceUSD);
+    await fetchAll(provider, address);
   }
 
-  async function fetchPublicData(provider: ethers.BrowserProvider) {
+  async function fetchAll(
+    provider: ethers.BrowserProvider,
+    address: string
+  ) {
     try {
       const agg = new ethers.Contract(
         CHAINLINK_BNB_USD,
@@ -140,20 +142,30 @@ export default function ALXDashboard() {
       setCandles(data);
     } catch (err) {
       console.error(err);
+      return [];
     }
   }
 
   useEffect(() => {
-    if (!window.ethereum) return;
+    if (!wallet || !window.ethereum) return;
+
     const provider = new ethers.BrowserProvider(window.ethereum);
-    fetchPublicData(provider);
 
-    const interval = setInterval(() => {
-      fetchPublicData(provider);
-    }, 10000);
+    const reload = async () => {
+      const agg = new ethers.Contract(
+        CHAINLINK_BNB_USD,
+        CHAINLINK_ABI,
+        provider
+      );
+      const [, answer] = await agg.latestRoundData();
+      const bnbUsd = Number(answer) / 1e8;
 
-    return () => clearInterval(interval);
-  }, []);
+      const history = await fetchSeries(provider, bnbUsd, timeframe);
+      setCandles(history);
+    };
+
+    reload();
+  }, [timeframe, wallet]);
 
   return (
     <main className="min-h-screen bg-[#050816] text-white relative overflow-hidden">
@@ -164,86 +176,121 @@ export default function ALXDashboard() {
 
       <div className="relative z-10 max-w-7xl mx-auto px-6 py-12">
 
-        {/* HEADER */}
-        <div className="flex justify-between items-center mb-10">
-          <div>
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
-              🪙 ALX Dashboard
-            </h1>
-            <p className="text-red-400 mt-2 font-semibold">
-              ${alxPriceUSD.toFixed(6)} / ALX
-            </p>
-          </div>
+        {/* ================= HEADER ================= */}
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-6 mb-10">
+
+          <h1 className="text-2xl sm:text-4xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+            🪙 ALX Dashboard
+          </h1>
 
           <button
             onClick={connectWallet}
-            className="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-xl transition shadow-lg"
+            className="w-full sm:w-auto px-6 py-3 rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 shadow-lg shadow-blue-500/30 text-sm sm:text-base"
           >
             {wallet ? "Connected" : "Connect Wallet"}
           </button>
+
         </div>
 
-        {/* PANCAKESWAP SECTION */}
-        <div className="bg-gradient-to-br from-yellow-500/10 via-orange-500/10 to-yellow-500/10 backdrop-blur-xl p-8 rounded-3xl border border-yellow-500/20 shadow-lg mb-12">
+        {/* ================= PANCAKESWAP CARD ================= */}
+        <div className="bg-gradient-to-br from-yellow-500/10 via-orange-500/10 to-yellow-500/10 backdrop-blur-xl p-6 sm:p-8 rounded-3xl border border-yellow-500/20 shadow-lg shadow-yellow-500/10 mb-10">
 
-          <h2 className="text-2xl font-bold text-yellow-400 mb-6">
-            🥞 PancakeSwap
-          </h2>
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
+            <h2 className="text-lg sm:text-2xl font-bold text-yellow-400">
+              🥞 PancakeSwap
+            </h2>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+            <span className="text-xs px-3 py-1 bg-yellow-500/20 rounded-full border border-yellow-500/30 w-fit">
+              BNB Smart Chain
+            </span>
+          </div>
 
-  <SwapCard
-    title="Swap ALX"
-    description="Trade ALX instantly on PancakeSwap"
-    link="https://pancakeswap.finance/swap?outputCurrency=0x09d6b05CED95755C5c8bB9e6D08298E45b5d3227"
-  />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+           
+                <SwapCard
+                  title="Swap ALX"
+                  link="https://pancakeswap.finance/swap?outputCurrency=0x09d6b05CED95755C5c8bB9e6D08298E45b5d3227"
+                />
 
-  <SwapCard
-    title="Add Liquidity"
-    description="Provide liquidity & earn trading fees"
-    link="https://pancakeswap.finance/add/WBNB/0x09d6b05CED95755C5c8bB9e6D08298E45b5d3227"
-  />
+                <SwapCard
+                  title="Add Liquidity"
+                  link="https://pancakeswap.finance/add/WBNB/0x09d6b05CED95755C5c8bB9e6D08298E45b5d3227"
+                />
 
-  <SwapCard
-    title="View Pool"
-    description="Check ALX/WBNB pool stats"
-    link="https://pancakeswap.finance/liquidity/pool/bsc/0x6156d89D3eda15285e64A67863E66d7Cf6fD9Cb4"
-  />
+                <SwapCard
+                  title="View Pool"
+                  link="https://pancakeswap.finance/liquidity/pool/bsc/0x6156d89D3eda15285e64A67863E66d7Cf6fD9Cb4"
+                />
+             
 
-</div>
+
+
+          </div>
         </div>
 
-        {/* STATS */}
-        <div className="grid grid-cols-1 sm:grid-cols-5 gap-6 mb-12">
-          <Card title="ALX Price" value={`$${alxPriceUSD.toFixed(6)}`} />
-          <Card title="Liquidity (TVL)" value={`$${formatLarge(liquidityUSD)}`} />
-          <Card title="Market Cap" value={`$${formatLarge(marketCap)}`} />
-
-          {wallet && (
-            <>
+        {wallet && (
+          <>
+            {/* ================= STATS GRID ================= */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
+ {isLoading ? (
+              <>
+                <SkeletonCard />
+                <SkeletonCard />
+                <SkeletonCard />
+                <SkeletonCard />
+              </>
+            ) : (
+              <>
               <Card title="ALX Balance" value={`${alxBalance.toFixed(2)} ALX`} />
-              <Card title="Portfolio Value" value={`$${portfolioValue.toFixed(2)}`} />
-            </>
-          )}
-        </div>
+              <Card title="ALX Price" value={`$${alxPriceUSD.toFixed(6)}`} />
+              <Card title="Liquidity (TVL)" value={`$${formatLarge(liquidityUSD)}`} />
+              <Card title="Market Cap" value={`$${formatLarge(marketCap)}`} />
+ </>
+            )}
+            </div>
 
-        {/* CHART */}
-        <div className="bg-white/5 backdrop-blur-xl p-8 rounded-3xl border border-white/10 shadow-xl">
-          <Chart
-            type="candlestick"
-            data={{
-              datasets: [{ label: "ALX", data: candles }],
-            }}
-            options={{
-              responsive: true,
-              scales: {
-                x: { type: "time" },
-                y: { type: "linear" },
-              },
-              plugins: { legend: { display: false } },
-            }}
-          />
-        </div>
+            {/* ================= TIMEFRAME SELECTOR ================= */}
+            <div className="flex justify-center sm:justify-start gap-2 sm:gap-3 mb-6">
+              {["1H", "4H", "1D"].map((tf) => (
+                <button
+                  key={tf}
+                  onClick={() => setTimeframe(tf as Timeframe)}
+                  className={`px-4 py-2 text-xs sm:text-sm rounded-lg border transition ${timeframe === tf
+                      ? "bg-blue-600 border-blue-500"
+                      : "bg-white/5 border-gray-700"
+                    }`}
+                >
+                  {tf}
+                </button>
+              ))}
+            </div>
+
+            {/* ================= CHART ================= */}
+            <div className="bg-white/5 backdrop-blur-xl p-4 sm:p-8 rounded-3xl border border-white/10 shadow-xl overflow-x-auto">
+
+              <div className="min-w-[600px]">
+                <Chart
+                  type="candlestick"
+                  data={{
+                    datasets: [{ label: "ALX", data: candles }],
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                      x: { type: "time" },
+                      y: { type: "linear" },
+                    },
+                    plugins: {
+                      legend: { display: false },
+                    },
+                  }}
+                />
+              </div>
+
+            </div>
+          </>
+        )}
 
       </div>
     </main>
@@ -274,65 +321,13 @@ function SwapCard({
     <a
       href={link}
       target="_blank"
-      rel="noopener noreferrer"
-      className="group relative rounded-3xl p-[1px] overflow-hidden
-                 transition-all duration-500 hover:scale-[1.03]"
+      className="bg-black/40 p-5 rounded-2xl border border-yellow-500/30 
+                 hover:bg-yellow-500/10 transition-all text-center"
     >
-      {/* 🔥 Neon Animated Border */}
-      <div className="absolute inset-0 rounded-3xl
-                      bg-[conic-gradient(from_0deg,transparent,rgba(234,179,8,0.6),transparent)]
-                      animate-spin-slow opacity-40 group-hover:opacity-70" />
-
-      {/* 🌌 Glass Container */}
-      <div className="relative rounded-3xl
-                      bg-black/60 backdrop-blur-2xl
-                      border border-yellow-500/20
-                      p-8 h-full
-                      transition-all duration-500
-                      group-hover:border-yellow-400/40
-                      group-hover:shadow-[0_0_60px_rgba(234,179,8,0.4)]">
-
-        {/* ✨ Shimmer Sweep */}
-        <div className="absolute inset-0 -translate-x-full
-                        bg-gradient-to-r
-                        from-transparent via-yellow-400/20 to-transparent
-                        group-hover:translate-x-full
-                        transition-transform duration-1000 ease-in-out" />
-
-        <div className="relative z-10 flex flex-col items-center text-center">
-
-          {/* 🥞 PancakeSwap Logo */}
-          <img
-            src="https://cryptologos.cc/logos/pancakeswap-cake-logo.png"
-            alt="PancakeSwap"
-            className="w-14 h-14 mb-5 drop-shadow-[0_0_15px_rgba(234,179,8,0.6)]
-                       transition-transform duration-500
-                       group-hover:scale-110"
-          />
-
-          {/* Title */}
-          <h3 className="text-xl font-bold text-yellow-400 mb-3 tracking-wide">
-            {title}
-          </h3>
-
-          {/* Description */}
-          <p className="text-gray-400 text-sm mb-6 max-w-[220px]">
-            {description}
-          </p>
-
-          {/* Action Button */}
-          <div className="px-5 py-2 rounded-xl
-                          bg-yellow-500/10
-                          border border-yellow-500/30
-                          text-yellow-300
-                          transition-all duration-300
-                          group-hover:bg-yellow-500/20
-                          group-hover:shadow-[0_0_25px_rgba(234,179,8,0.6)]">
-            Open →
-          </div>
-
-        </div>
-      </div>
+      <p className="text-gray-400 text-sm mb-2">{title}</p>
+      <p className="text-base font-bold text-yellow-400">
+        Open →
+      </p>
     </a>
   );
 }
