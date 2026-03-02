@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import Particles from "react-tsparticles";
 import { ethers } from "ethers";
 import type { Eip1193Provider } from "ethers";
+import Link from "next/link";
 
 declare global {
   interface Window {
@@ -89,18 +90,18 @@ export default function Page() {
     <main className="relative min-h-screen flex items-center justify-center overflow-hidden px-4">
 
       {/* 🌌 Animated Stars */}
-   <Particles
-  className="absolute inset-0"
-  options={{
-    background: { color: "#000000" },
-    particles: {
-      number: { value: 100 },
-      size: { value: 2 },
-      move: { enable: true, speed: 0.3 },
-      opacity: { value: 0.5 },
-    },
-  }}
-/>
+      <Particles
+        className="absolute inset-0"
+        options={{
+          background: { color: "#000000" },
+          particles: {
+            number: { value: 100 },
+            size: { value: 2 },
+            move: { enable: true, speed: 0.3 },
+            opacity: { value: 0.5 },
+          },
+        }}
+      />
 
       {/* ✨ Glow Pulse */}
       <div className="absolute w-[600px] h-[600px] bg-blue-600 opacity-20 blur-[150px] rounded-full animate-pulse" />
@@ -117,7 +118,12 @@ export default function Page() {
 
         <p className="mt-4 text-gray-400">
           Web3 AI Ecosystem Powered by{" "}
-          <span className="text-blue-500 font-semibold">ALX Coin</span>
+          <Link
+            href="/alx"
+            className="text-blue-500 font-semibold hover:text-blue-400 transition underline"
+          >
+            ALX Coin
+          </Link>
         </p>
 
         {/* ⏳ Countdown */}
