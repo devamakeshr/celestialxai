@@ -14,7 +14,7 @@ import {
   CandlestickController,
   CandlestickElement,
 } from "chartjs-chart-financial";
-
+import Image from "next/image";
 import { Chart } from "react-chartjs-2";
 import "chartjs-adapter-date-fns";
 import { useWalletStore } from "@/store/useWalletStore";
@@ -72,11 +72,13 @@ export default function ALXDashboard() {
   const [liquidityUSD, setLiquidityUSD] = useState(0);
   const [marketCap, setMarketCap] = useState(0);
   const [candles, setCandles] = useState<Candle[]>([]);
-  const [timeframe, setTimeframe] = useState<Timeframe>("1D");
-  const [isLoading, setIsLoading] = useState(false);
+  const { address, isConnected, setWallet, disconnect } = useWalletStore();
 
   async function connectWallet() {
-    if (!window.ethereum) return alert("Install MetaMask");
+    if (!window.ethereum) {
+      alert("Install MetaMask");
+      return;
+    }
 
     await window.ethereum.request({
       method: "wallet_switchEthereumChain",
@@ -89,14 +91,12 @@ export default function ALXDashboard() {
 
     const network = await provider.getNetwork();
 
-    setWallet(address);
-    await fetchAll(provider, address);
-  }
+    setWallet(userAddress, network.chainId.toString());
 
-  async function fetchAll(
-    provider: ethers.BrowserProvider,
-    address: string
-  ) {
+    // 🔥 Fetch balance immediately
+    await fetchAlxBalance(provider, userAddress);
+  }
+  async function fetchPublicData(provider: ethers.BrowserProvider) {
     try {
       const agg = new ethers.Contract(
         CHAINLINK_BNB_USD,
@@ -142,30 +142,60 @@ export default function ALXDashboard() {
       setCandles(data);
     } catch (err) {
       console.error(err);
-      return [];
     }
   }
+  async function fetchAlxBalance(provider: ethers.BrowserProvider, userAddress: string) {
+    try {
+      const token = new ethers.Contract(ALX_CONTRACT, ERC20_ABI, provider);
+      const balance = await token.balanceOf(userAddress);
 
+      const formatted = Number(ethers.formatUnits(balance, 18));
+
+      setAlxBalance(formatted);
+      setPortfolioValue(formatted * alxPriceUSD);
+    } catch (err) {
+      console.error("Balance fetch error:", err);
+    }
+  }
   useEffect(() => {
-    if (!wallet || !window.ethereum) return;
+    if (isConnected && address) {
+      setPortfolioValue(alxBalance * alxPriceUSD);
+    }
+  }, [alxPriceUSD, isConnected, address]);
+useEffect(() => {
+  const checkConnection = async () => {
+    if (typeof window === "undefined") return;
 
-    const provider = new ethers.BrowserProvider(window.ethereum);
+    const eth = window.ethereum;
+    if (!eth) return;
 
-    const reload = async () => {
-      const agg = new ethers.Contract(
-        CHAINLINK_BNB_USD,
-        CHAINLINK_ABI,
-        provider
-      );
-      const [, answer] = await agg.latestRoundData();
-      const bnbUsd = Number(answer) / 1e8;
+    const provider = new ethers.BrowserProvider(eth);
+    const accounts = await provider.listAccounts();
 
-      const history = await fetchSeries(provider, bnbUsd, timeframe);
-      setCandles(history);
-    };
+    if (accounts.length > 0) {
+      const network = await provider.getNetwork();
+      setWallet(accounts[0].address, network.chainId.toString());
 
-    reload();
-  }, [timeframe, wallet]);
+      await fetchAlxBalance(provider, accounts[0].address);
+    }
+  };
+
+  checkConnection();
+}, []);
+  useEffect(() => {
+    if (!window.ethereum) return;
+    const eth = window.ethereum;
+    if (!eth) return;
+
+    const provider = new ethers.BrowserProvider(eth);
+    fetchPublicData(provider);
+
+    const interval = setInterval(() => {
+      fetchPublicData(provider);
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <main className="min-h-screen bg-[#050816] text-white relative overflow-hidden">
@@ -176,123 +206,159 @@ export default function ALXDashboard() {
 
       <div className="relative z-10 max-w-7xl mx-auto px-6 py-12">
 
-        {/* ================= HEADER ================= */}
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-6 mb-10">
+        {/* HEADER */}
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-6 mb-12">
 
-          <h1 className="text-2xl sm:text-4xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
-            🪙 ALX Dashboard
-          </h1>
+          {/* 🔵 LEFT SIDE */}
+          <div className="flex items-center gap-4">
 
-          <button
-            onClick={connectWallet}
-            className="w-full sm:w-auto px-6 py-3 rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 shadow-lg shadow-blue-500/30 text-sm sm:text-base"
-          >
-            {wallet ? "Connected" : "Connect Wallet"}
-          </button>
+            {/* 🔥 Your Logo */}
+            <Image
+              src="/images/logo.png"
+              alt="ALX Logo"
+              width={50}
+              height={50}
+              className="rounded-xl shadow-[0_0_20px_rgba(59,130,246,0.4)]"
+              priority
+            />
 
-        </div>
+            <div>
+              <h1 className="text-3xl sm:text-4xl font-bold 
+                     bg-gradient-to-r from-blue-400 to-purple-500 
+                     bg-clip-text text-transparent">
+                ALX Dashboard
+              </h1>
 
-        {/* ================= PANCAKESWAP CARD ================= */}
-        <div className="bg-gradient-to-br from-yellow-500/10 via-orange-500/10 to-yellow-500/10 backdrop-blur-xl p-6 sm:p-8 rounded-3xl border border-yellow-500/20 shadow-lg shadow-yellow-500/10 mb-10">
-
-          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
-            <h2 className="text-lg sm:text-2xl font-bold text-yellow-400">
-              🥞 PancakeSwap
-            </h2>
-
-            <span className="text-xs px-3 py-1 bg-yellow-500/20 rounded-full border border-yellow-500/30 w-fit">
-              BNB Smart Chain
-            </span>
+              <p className="text-red-400 mt-1 font-semibold text-sm">
+                ${alxPriceUSD.toFixed(6)} / ALX
+              </p>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-           
-                <SwapCard
-                  title="Swap ALX"
-                  link="https://pancakeswap.finance/swap?outputCurrency=0x09d6b05CED95755C5c8bB9e6D08298E45b5d3227"
-                />
+          {/* 🟣 RIGHT SIDE */}
+          <div className="flex items-center gap-4">
 
-                <SwapCard
-                  title="Add Liquidity"
-                  link="https://pancakeswap.finance/add/WBNB/0x09d6b05CED95755C5c8bB9e6D08298E45b5d3227"
-                />
-
-                <SwapCard
-                  title="View Pool"
-                  link="https://pancakeswap.finance/liquidity/pool/bsc/0x6156d89D3eda15285e64A67863E66d7Cf6fD9Cb4"
-                />
-             
-
-
-
-          </div>
-        </div>
-
-        {wallet && (
-          <>
-            {/* ================= STATS GRID ================= */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
- {isLoading ? (
-              <>
-                <SkeletonCard />
-                <SkeletonCard />
-                <SkeletonCard />
-                <SkeletonCard />
-              </>
-            ) : (
-              <>
-              <Card title="ALX Balance" value={`${alxBalance.toFixed(2)} ALX`} />
-              <Card title="ALX Price" value={`$${alxPriceUSD.toFixed(6)}`} />
-              <Card title="Liquidity (TVL)" value={`$${formatLarge(liquidityUSD)}`} />
-              <Card title="Market Cap" value={`$${formatLarge(marketCap)}`} />
- </>
-            )}
-            </div>
-
-            {/* ================= TIMEFRAME SELECTOR ================= */}
-            <div className="flex justify-center sm:justify-start gap-2 sm:gap-3 mb-6">
-              {["1H", "4H", "1D"].map((tf) => (
-                <button
-                  key={tf}
-                  onClick={() => setTimeframe(tf as Timeframe)}
-                  className={`px-4 py-2 text-xs sm:text-sm rounded-lg border transition ${timeframe === tf
-                      ? "bg-blue-600 border-blue-500"
-                      : "bg-white/5 border-gray-700"
-                    }`}
-                >
-                  {tf}
-                </button>
-              ))}
-            </div>
-
-            {/* ================= CHART ================= */}
-            <div className="bg-white/5 backdrop-blur-xl p-4 sm:p-8 rounded-3xl border border-white/10 shadow-xl overflow-x-auto">
-
-              <div className="min-w-[600px]">
-                <Chart
-                  type="candlestick"
-                  data={{
-                    datasets: [{ label: "ALX", data: candles }],
-                  }}
-                  options={{
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                      x: { type: "time" },
-                      y: { type: "linear" },
-                    },
-                    plugins: {
-                      legend: { display: false },
-                    },
-                  }}
-                />
+            {/* 💼 Wallet Info */}
+            {isConnected && address && (
+              <div className="bg-white/5 backdrop-blur-xl 
+                      px-4 py-2 rounded-xl 
+                      border border-white/10 
+                      text-sm text-gray-300">
+                {address?.slice(0, 6)}...{address?.slice(-4)}
               </div>
+            )}
 
+            {/* 🔘 Connect Button */}
+            <button
+              onClick={isConnected ? disconnect : connectWallet}
+              className={`px-6 py-3 rounded-xl transition shadow-lg ${isConnected
+                ? "bg-green-600 hover:bg-green-700"
+                : "bg-blue-600 hover:bg-blue-700"
+                }`}
+            >
+              {isConnected ? "Disconnect" : "Connect Wallet"}
+            </button>
+          </div>
+
+        </div>
+
+        {/* PANCAKESWAP SECTION */}
+
+
+        {/* STATS */}
+        <div className="grid grid-cols-1 sm:grid-cols-5 gap-6 mb-12">
+          <Card title="ALX Price" value={`$${alxPriceUSD.toFixed(6)}`} />
+          <Card title="Liquidity (TVL)" value={`$${formatLarge(liquidityUSD)}`} />
+          <Card title="Market Cap" value={`$${formatLarge(marketCap)}`} />
+
+          {isConnected && address && (
+            <>
+              <Card title="ALX Balance" value={`${alxBalance.toFixed(2)} ALX`} />
+              <Card title="Portfolio Value" value={`$${portfolioValue.toFixed(2)}`} />
+            </>
+          )}
+        </div>
+        <div className="group relative bg-gradient-to-br 
+                from-yellow-500/10 via-orange-500/10 to-yellow-500/10 
+                backdrop-blur-xl p-10 rounded-3xl 
+                border border-yellow-500/20 
+                shadow-[0_0_40px_rgba(234,179,8,0.15)] 
+                mb-14 transition-all duration-500">
+
+          {/* 🔥 Subtle Glow on Hover */}
+          <div className="absolute inset-0 rounded-3xl 
+                  bg-yellow-400/5 opacity-0 
+                  group-hover:opacity-100 
+                  transition duration-500" />
+
+          {/* 🥞 Header */}
+          <div className="relative z-10 flex flex-col items-center mb-10">
+
+            <div className="relative flex items-center justify-center mb-5">
+              {/* Neon Glow Circle */}
+              <div className="absolute w-24 h-24 rounded-full 
+                      bg-yellow-400/20 blur-2xl 
+                      opacity-0 group-hover:opacity-100 
+                      transition duration-500" />
+
+              <Image
+                src="/images/fullpancake.png"
+                alt="PancakeSwap"
+                width={300}
+                height={300}
+                className="relative z-10 transition-all duration-500 
+                   group-hover:scale-110"
+                priority
+              />
             </div>
-          </>
-        )}
 
+
+
+            <p className="text-gray-400 text-sm mt-2 text-center max-w-md">
+              Swap, provide liquidity, and view the ALX/WBNB pool directly on PancakeSwap.
+            </p>
+          </div>
+
+          {/* 🔥 Swap Cards Grid */}
+          <div className="relative z-10 grid grid-cols-1 sm:grid-cols-3 gap-8">
+            <SwapCard
+              title="Swap ALX"
+              description="Trade ALX instantly on PancakeSwap"
+              link="https://pancakeswap.finance/swap?outputCurrency=0x09d6b05CED95755C5c8bB9e6D08298E45b5d3227"
+            />
+
+            <SwapCard
+              title="Add Liquidity"
+              description="Provide liquidity & earn trading fees"
+              link="https://pancakeswap.finance/add/WBNB/0x09d6b05CED95755C5c8bB9e6D08298E45b5d3227"
+            />
+
+            <SwapCard
+              title="View Pool"
+              description="Check ALX/WBNB pool stats"
+              link="https://pancakeswap.finance/liquidity/pool/bsc/0x6156d89D3eda15285e64A67863E66d7Cf6fD9Cb4"
+            />
+          </div>
+        </div>
       </div>
+      {/* CHART */}
+      <div className="bg-white/5 backdrop-blur-xl p-8 rounded-3xl border border-white/10 shadow-xl">
+        <Chart
+          type="candlestick"
+          data={{
+            datasets: [{ label: "ALX", data: candles }],
+          }}
+          options={{
+            responsive: true,
+            scales: {
+              x: { type: "time" },
+              y: { type: "linear" },
+            },
+            plugins: { legend: { display: false } },
+          }}
+        />
+      </div>
+
     </main>
   );
 }
@@ -321,13 +387,73 @@ function SwapCard({
     <a
       href={link}
       target="_blank"
-      className="bg-black/40 p-5 rounded-2xl border border-yellow-500/30 
-                 hover:bg-yellow-500/10 transition-all text-center"
+      rel="noopener noreferrer"
+      className="group relative rounded-3xl p-[1px] overflow-hidden
+                 transition-all duration-500 hover:scale-[1.03]"
     >
-      <p className="text-gray-400 text-sm mb-2">{title}</p>
-      <p className="text-base font-bold text-yellow-400">
-        Open →
-      </p>
+      {/* 🔥 Neon Animated Border */}
+      <div className="absolute inset-0 rounded-3xl
+                      bg-[conic-gradient(from_0deg,transparent,rgba(234,179,8,0.6),transparent)]
+                      animate-spin-slow opacity-40 group-hover:opacity-70" />
+
+      {/* 🌌 Glass Container */}
+      <div className="relative rounded-3xl
+                      bg-black/60 backdrop-blur-2xl
+                      border border-yellow-500/20
+                      p-8 h-full
+                      transition-all duration-500
+                      group-hover:border-yellow-400/40
+                      group-hover:shadow-[0_0_60px_rgba(234,179,8,0.4)]">
+
+        {/* ✨ Shimmer Sweep */}
+        <div className="absolute inset-0 -translate-x-full
+                        bg-gradient-to-r
+                        from-transparent via-yellow-400/20 to-transparent
+                        group-hover:translate-x-full
+                        transition-transform duration-1000 ease-in-out" />
+
+        <div className="relative z-10 flex flex-col items-center text-center">
+
+          {/* 🥞 PancakeSwap Logo */}
+          <div className="relative mb-5">
+            <div className="absolute inset-0 rounded-full blur-xl 
+                  bg-yellow-400/30 opacity-0 
+                  group-hover:opacity-100 
+                  transition duration-500" />
+
+            <Image
+              src="/images/pancake.png"
+              alt="PancakeSwap"
+              width={60}
+              height={60}
+              className="relative z-10 transition-all duration-500 group-hover:scale-110"
+              priority
+            />
+          </div>
+
+          {/* Title */}
+          <h3 className="text-xl font-bold text-yellow-400 mb-3 tracking-wide">
+            {title}
+          </h3>
+
+          {/* Description */}
+          <p className="text-gray-400 text-sm mb-6 max-w-[220px]">
+            {description}
+          </p>
+
+          {/* Action Button */}
+          <div className="px-5 py-2 rounded-xl
+                          bg-yellow-500/10
+                          border border-yellow-500/30
+                          text-yellow-300
+                          transition-all duration-300
+                          group-hover:bg-yellow-500/20
+                          group-hover:shadow-[0_0_25px_rgba(234,179,8,0.6)]">
+            Open →
+          </div>
+
+        </div>
+      </div>
     </a>
   );
 }
