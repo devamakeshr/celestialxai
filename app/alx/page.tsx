@@ -89,6 +89,11 @@ export default function ALXDashboard() {
   const [timeframe, setTimeframe] = useState<Timeframe>("1D");
   const [isLoading, setIsLoading] = useState(false);
 
+  function SkeletonCard() {
+    return (
+      <div className="bg-gray-800/40 animate-pulse p-6 rounded-2xl h-24" />
+    );
+  }
   async function connectWallet() {
     if (!window.ethereum) {
       alert("Install MetaMask");
@@ -248,92 +253,152 @@ export default function ALXDashboard() {
     }
   }
 
- useEffect(() => {
-  if (!wallet || !window.ethereum) return;
+  useEffect(() => {
+    if (!wallet || !window.ethereum) return;
 
-  const provider = new ethers.BrowserProvider(window.ethereum);
+    const provider = new ethers.BrowserProvider(window.ethereum);
 
-  const reload = async () => {
-    const agg = new ethers.Contract(
-      CHAINLINK_BNB_USD,
-      CHAINLINK_ABI,
-      provider
-    );
-    const [, answer] = await agg.latestRoundData();
-    const bnbUsd = Number(answer) / 1e8;
+    const reload = async () => {
+      const agg = new ethers.Contract(
+        CHAINLINK_BNB_USD,
+        CHAINLINK_ABI,
+        provider
+      );
+      const [, answer] = await agg.latestRoundData();
+      const bnbUsd = Number(answer) / 1e8;
 
-    const history = await fetchSeries(provider, bnbUsd, timeframe);
-    setCandles(history);
-  };
+      const history = await fetchSeries(provider, bnbUsd, timeframe);
+      setCandles(history);
+    };
 
-  reload();
-}, [timeframe, wallet]);
+    reload();
+  }, [timeframe, wallet]);
 
   return (
-    <main className="min-h-screen bg-[#050816] text-white px-4 sm:px-6 py-8">
-      <div className="max-w-7xl mx-auto">
+    <main className="min-h-screen bg-[#050816] text-white relative overflow-hidden">
 
-        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mb-8">
-          <h1 className="text-2xl sm:text-4xl font-bold">
+      {/* 🌌 Background Glow */}
+      <div className="absolute w-[400px] h-[400px] sm:w-[600px] sm:h-[600px] bg-blue-600/20 blur-[120px] sm:blur-[160px] rounded-full top-[-150px] left-[-150px]" />
+      <div className="absolute w-[350px] h-[350px] sm:w-[500px] sm:h-[500px] bg-purple-600/20 blur-[120px] sm:blur-[160px] rounded-full bottom-[-150px] right-[-150px]" />
+
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
+
+        {/* ================= HEADER ================= */}
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-6 mb-10">
+
+          <h1 className="text-2xl sm:text-4xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
             🪙 ALX Dashboard
           </h1>
 
           <button
             onClick={connectWallet}
-            className="w-full sm:w-auto px-6 py-3 bg-blue-600 rounded-xl"
+            className="w-full sm:w-auto px-6 py-3 rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 shadow-lg shadow-blue-500/30 text-sm sm:text-base"
           >
             {wallet ? "Connected" : "Connect Wallet"}
           </button>
+
+        </div>
+
+        {/* ================= PANCAKESWAP CARD ================= */}
+        <div className="bg-gradient-to-br from-yellow-500/10 via-orange-500/10 to-yellow-500/10 backdrop-blur-xl p-6 sm:p-8 rounded-3xl border border-yellow-500/20 shadow-lg shadow-yellow-500/10 mb-10">
+
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
+            <h2 className="text-lg sm:text-2xl font-bold text-yellow-400">
+              🥞 PancakeSwap
+            </h2>
+
+            <span className="text-xs px-3 py-1 bg-yellow-500/20 rounded-full border border-yellow-500/30 w-fit">
+              BNB Smart Chain
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+           
+                <SwapCard
+                  title="Swap ALX"
+                  link="https://pancakeswap.finance/swap?outputCurrency=0x09d6b05CED95755C5c8bB9e6D08298E45b5d3227"
+                />
+
+                <SwapCard
+                  title="Add Liquidity"
+                  link="https://pancakeswap.finance/add/WBNB/0x09d6b05CED95755C5c8bB9e6D08298E45b5d3227"
+                />
+
+                <SwapCard
+                  title="View Pool"
+                  link="https://pancakeswap.finance/liquidity/pool/bsc/0x6156d89D3eda15285e64A67863E66d7Cf6fD9Cb4"
+                />
+             
+
+
+
+          </div>
         </div>
 
         {wallet && (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            {/* ================= STATS GRID ================= */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
+ {isLoading ? (
+              <>
+                <SkeletonCard />
+                <SkeletonCard />
+                <SkeletonCard />
+                <SkeletonCard />
+              </>
+            ) : (
+              <>
               <Card title="ALX Balance" value={`${alxBalance.toFixed(2)} ALX`} />
               <Card title="ALX Price" value={`$${alxPriceUSD.toFixed(6)}`} />
               <Card title="Liquidity (TVL)" value={`$${formatLarge(liquidityUSD)}`} />
               <Card title="Market Cap" value={`$${formatLarge(marketCap)}`} />
+ </>
+            )}
             </div>
 
-            <div className="flex justify-center sm:justify-start gap-2 mb-6">
+            {/* ================= TIMEFRAME SELECTOR ================= */}
+            <div className="flex justify-center sm:justify-start gap-2 sm:gap-3 mb-6">
               {["1H", "4H", "1D"].map((tf) => (
                 <button
                   key={tf}
                   onClick={() => setTimeframe(tf as Timeframe)}
-                  className={`px-4 py-2 text-sm rounded-lg ${
-                    timeframe === tf
-                      ? "bg-blue-600"
-                      : "bg-gray-800"
-                  }`}
+                  className={`px-4 py-2 text-xs sm:text-sm rounded-lg border transition ${timeframe === tf
+                      ? "bg-blue-600 border-blue-500"
+                      : "bg-white/5 border-gray-700"
+                    }`}
                 >
                   {tf}
                 </button>
               ))}
             </div>
 
-            {isLoading ? (
-              <p className="text-center">Loading chart...</p>
-            ) : (
-              <div className="bg-gray-900 p-4 rounded-xl overflow-x-auto">
-                <div className="min-w-[600px] h-[400px]">
-                  <Chart
-                    type="candlestick"
-                    data={{ datasets: [{ label: "ALX", data: candles }] }}
-                    options={{
-                      responsive: true,
-                      maintainAspectRatio: false,
-                      scales: {
-                        x: { type: "time" },
-                        y: { type: "linear" },
-                      },
-                      plugins: { legend: { display: false } },
-                    }}
-                  />
-                </div>
+            {/* ================= CHART ================= */}
+            <div className="bg-white/5 backdrop-blur-xl p-4 sm:p-8 rounded-3xl border border-white/10 shadow-xl overflow-x-auto">
+
+              <div className="min-w-[600px]">
+                <Chart
+                  type="candlestick"
+                  data={{
+                    datasets: [{ label: "ALX", data: candles }],
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                      x: { type: "time" },
+                      y: { type: "linear" },
+                    },
+                    plugins: {
+                      legend: { display: false },
+                    },
+                  }}
+                />
               </div>
-            )}
+
+            </div>
           </>
         )}
+
       </div>
     </main>
   );
@@ -345,5 +410,27 @@ function Card({ title, value }: { title: string; value: string }) {
       <p className="text-gray-400 text-sm mb-2">{title}</p>
       <p className="text-xl font-bold">{value}</p>
     </div>
+  );
+}
+
+function SwapCard({
+  title,
+  link,
+}: {
+  title: string;
+  link: string;
+}) {
+  return (
+    <a
+      href={link}
+      target="_blank"
+      className="bg-black/40 p-5 rounded-2xl border border-yellow-500/30 
+                 hover:bg-yellow-500/10 transition-all text-center"
+    >
+      <p className="text-gray-400 text-sm mb-2">{title}</p>
+      <p className="text-base font-bold text-yellow-400">
+        Open →
+      </p>
+    </a>
   );
 }
