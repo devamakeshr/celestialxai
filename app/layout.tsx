@@ -13,10 +13,20 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: "AI Gateway Demo",
-  description: "A demo of the Vercel AI Gateway with the AI SDK by Vercel",
+export const metadata:Metadata = {
+  title: "CelestialXAI | Web3 AI Ecosystem",
+  description:
+    "CelestialXAI is a decentralized AI ecosystem powered by ALX Coin. Wallet login, DAO governance, and space-tech infrastructure.",
+  keywords: ["CelestialXAI", "ALX Coin", "Web3 AI", "Blockchain AI"],
+  openGraph: {
+    title: "CelestialXAI",
+    description: "Web3 AI Ecosystem Powered by ALX",
+    url: "https://celestialxai.io",
+    siteName: "CelestialXAI",
+    type: "website",
+  },
 };
+
 
 export default function RootLayout({
   children,
